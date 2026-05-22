@@ -115,11 +115,7 @@ export default function SavingsCalculator({ loanInfo }: Props) {
                 <span className="text-sm font-bold text-green-700">5년 절약액</span>
                 {result.fee > 0 && <span className="text-xs text-green-600 ml-1">(수수료 차감 후)</span>}
               </div>
-              <span className="font-black text-green-700 text-xl">{fiveYearNet.toLocaleString()}원</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-green-600">남은 기간 전체 절약액</span>
-              <span className="font-bold text-green-600">{Math.round(result.netTotalSaving).toLocaleString()}원</span>
+              <span className="font-black text-green-700 text-xl">{Math.round(fiveYearNet).toLocaleString()}원</span>
             </div>
           </div>
 

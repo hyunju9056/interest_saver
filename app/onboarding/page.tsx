@@ -34,6 +34,24 @@ const REPAYMENT_TYPES: { value: RepaymentType; label: string; desc: string }[] =
 ];
 const LOAN_TERMS = [10, 15, 20, 25, 30, 35, 40, 50];
 
+function formatManwon(valueStr: string): string {
+  const value = Math.floor(parseFloat(valueStr));
+  if (isNaN(value) || value <= 0) return "";
+  const eok = Math.floor(value / 10000);
+  const man = value % 10000;
+  const cheon = Math.floor(man / 1000);
+  const baek = Math.floor((man % 1000) / 100);
+  const rest = man % 100;
+  let manStr = "";
+  if (cheon > 0) manStr += `${cheon}천`;
+  if (baek > 0) manStr += `${baek}백`;
+  if (rest > 0) manStr += `${rest}`;
+  if (eok > 0 && manStr) return `${eok}억 ${manStr}만원`;
+  if (eok > 0) return `${eok}억원`;
+  if (manStr) return `${manStr}만원`;
+  return `${value}만원`;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
 
@@ -72,6 +90,22 @@ export default function OnboardingPage() {
       return next;
     });
   }
+
+  function handleAddAmount(field: "loan_amount" | "property_value" | "annual_income", add: number) {
+    setForm((prev) => {
+      const current = parseFloat(prev[field]) || 0;
+      const next = { ...prev, [field]: String(current + add) };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  const AMOUNT_BUTTONS = [
+    { label: "+10만", value: 10 },
+    { label: "+100만", value: 100 },
+    { label: "+1000만", value: 1000 },
+    { label: "+1억", value: 10000 },
+  ];
 
   // 월 납입액 미리보기
   const previewPayment = (() => {
@@ -190,8 +224,16 @@ export default function OnboardingPage() {
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">만원</span>
                 </div>
+                <div className="flex gap-1.5 mt-2">
+                  {AMOUNT_BUTTONS.map((btn) => (
+                    <button key={btn.value} type="button"
+                      onClick={() => handleAddAmount("loan_amount", btn.value)}
+                      className="flex-1 text-xs py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    >{btn.label}</button>
+                  ))}
+                </div>
                 {form.loan_amount && (
-                  <p className="text-xs text-blue-600 mt-1 font-medium">= {(parseFloat(form.loan_amount) / 10000).toFixed(2)}억원</p>
+                  <p className="text-xs text-blue-600 mt-1 font-medium">= {formatManwon(form.loan_amount)}</p>
                 )}
               </div>
 
@@ -303,6 +345,17 @@ export default function OnboardingPage() {
                       />
                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">만원</span>
                     </div>
+                    <div className="flex gap-1 mt-2">
+                      {AMOUNT_BUTTONS.map((btn) => (
+                        <button key={btn.value} type="button"
+                          onClick={() => handleAddAmount("property_value", btn.value)}
+                          className="flex-1 text-xs py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        >{btn.label}</button>
+                      ))}
+                    </div>
+                    {form.property_value && (
+                      <p className="text-xs text-blue-600 mt-1 font-medium">= {formatManwon(form.property_value)}</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 mb-1.5">연소득</p>
@@ -314,6 +367,17 @@ export default function OnboardingPage() {
                       />
                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">만원</span>
                     </div>
+                    <div className="flex gap-1 mt-2">
+                      {AMOUNT_BUTTONS.map((btn) => (
+                        <button key={btn.value} type="button"
+                          onClick={() => handleAddAmount("annual_income", btn.value)}
+                          className="flex-1 text-xs py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        >{btn.label}</button>
+                      ))}
+                    </div>
+                    {form.annual_income && (
+                      <p className="text-xs text-blue-600 mt-1 font-medium">= {formatManwon(form.annual_income)}</p>
+                    )}
                   </div>
                 </div>
                 <div className="mt-3">

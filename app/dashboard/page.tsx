@@ -4,7 +4,46 @@ import Link from "next/link";
 import SavingsCalculator from "./SavingsCalculator";
 import AlertToggle from "./AlertToggle";
 import GuestDashboard from "./GuestDashboard";
+import BankOfferCard from "./BankOfferCard";
 import { calcMonthlyPayment, calcRemainingBalance, type LoanInfo, type RepaymentType } from "@/lib/loanCalc";
+import { fetchMortgageRates } from "@/lib/finlife";
+
+function getEndDateInfo(endDate: string | null): { label: string; daysLeft: number; isSpecial: boolean } | null {
+  if (!endDate) return null;
+  const end = new Date(`${endDate.slice(0, 4)}-${endDate.slice(4, 6)}-${endDate.slice(6, 8)}`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysLeft = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysLeft < 0) return null;
+  const label = `${endDate.slice(4, 6)}/${endDate.slice(6, 8)}까지`;
+  return { label, daysLeft, isSpecial: daysLeft <= 90 };
+}
+
+const BANK_URLS: Record<string, string> = {
+  KB국민은행: "https://obank.kbstar.com/qub/site/mul/template/depositLoan.jsp",
+  신한은행: "https://www.shinhan.com/hpe/index.jsp#home/loan/mortgageLoan/mortgageLoanIntro.do",
+  우리은행: "https://www.wooribank.com/wb/wob/loan/comDpLo0003.do?menuCode=0094",
+  하나은행: "https://www.kebhana.com/cont/mall/mall08/mall0801/index.jsp",
+  NH농협은행: "https://banking.nonghyup.com/nhbank.html",
+  IBK기업은행: "https://www.ibk.co.kr/mortgage",
+  "SC제일은행": "https://www.sc.co.kr/html/ko/mortgage/mortgage_0201000000.html",
+  카카오뱅크: "https://www.kakaobank.com/products/mortgage-loan",
+  토스뱅크: "https://www.tossbank.com/product/loan",
+  K뱅크: "https://www.kbanknow.com/ib20/mnu/FPMLON010000000",
+  부산은행: "https://www.busanbank.co.kr/ib20/mnu/FPMLON010000",
+  경남은행: "https://www.knbank.co.kr/ib20/mnu/FPMLON010000",
+  "대구은행(iM뱅크)": "https://www.imbank.co.kr/ib20/mnu/FPMLON010000",
+  광주은행: "https://www.kjbank.com/ib20/mnu/FPMLON010000",
+  전북은행: "https://www.jbbank.co.kr/ib20/mnu/FPMLON010000",
+  제주은행: "https://www.jejubank.co.kr/ib20/mnu/FPMLON010000",
+  수협은행: "https://www.suhyup-bank.com/ib20/mnu/FPMLON010000",
+  SBI저축은행: "https://www.sbibank.co.kr/loan/mortgage.do",
+  OK저축은행: "https://www.oksavingsbank.com/loan/mortgage.do",
+  웰컴저축은행: "https://www.welcomebank.co.kr/loan/mortgage.do",
+  페퍼저축은행: "https://www.pepperbank.co.kr/loan/mortgage.do",
+  애큐온저축은행: "https://www.aquon.co.kr/loan/mortgage.do",
+  다올저축은행: "https://www.daolsb.com/loan/mortgage.do",
+};
 
 const BANK_COLORS: Record<string, string> = {
   KB국민은행: "bg-amber-50 text-amber-700 border-amber-200",
@@ -52,22 +91,17 @@ export default async function DashboardPage() {
   // 로그인 안 된 경우 게스트 대시보드
   if (!user) return <GuestDashboard />;
 
-  const [{ data: loans }, { data: offers }] = await Promise.all([
-    supabase
-      .from("loans")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1),
-    supabase
-      .from("special_offers")
-      .select("*")
-      .eq("is_active", true)
-      .order("rate", { ascending: true }),
-  ]);
+  const { data: loans } = await supabase
+    .from("loans")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1);
 
   const loan = loans?.[0] ?? null;
   if (!loan) return <GuestDashboard />;
+
+  const { banks: offers, disclosedAt } = await fetchMortgageRates(loan.property_type ?? "", loan.repayment_type ?? "");
 
   const loanInfo: LoanInfo = {
     originalAmount: loan.loan_amount,
@@ -163,74 +197,23 @@ export default async function DashboardPage() {
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                <span>🏦</span> 현재 특판 목록
+                <span>🏦</span> 은행별 주담대 금리
               </h2>
               <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">
-                {offers?.length ?? 0}개 진행 중
+                금감원 · {loan.property_type} · {loan.repayment_type} · {offers.length}개 은행{disclosedAt ? ` · 공시일 ${disclosedAt}` : ""}
               </span>
             </div>
 
-            {offers && offers.length > 0 ? (
-              offers.map((offer) => {
-                const rateDiff = loan.current_rate - offer.rate;
-                const isGood = rateDiff > 0;
-                const monthlySaving = isGood
-                  ? Math.round((loan.loan_amount * (rateDiff / 100)) / 12)
-                  : 0;
-                const daysLeft = getDaysLeft(offer.end_date);
-                const colorClass =
-                  BANK_COLORS[offer.bank] ?? "bg-slate-50 text-slate-700 border-slate-200";
-
-                return (
-                  <div
-                    key={offer.id}
-                    className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-blue-200 hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-bold px-3 py-1 rounded-full border ${colorClass}`}>
-                          {offer.bank}
-                        </span>
-                        {daysLeft <= 7 && daysLeft > 0 && (
-                          <span className="text-xs bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">
-                            D-{daysLeft}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-black text-slate-900">{offer.rate}%</div>
-                        {isGood && (
-                          <div className="text-xs text-green-600 font-semibold">
-                            -{rateDiff.toFixed(2)}%p
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-slate-500 mb-3 leading-relaxed">{offer.conditions}</p>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-400">
-                        {offer.start_date} ~ {offer.end_date}
-                      </span>
-                      {isGood ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs bg-green-50 text-green-700 font-bold px-2 py-1 rounded-lg border border-green-200">
-                            ✓ 내게 유리
-                          </span>
-                          <span className="text-sm font-black text-green-600">
-                            월 {monthlySaving.toLocaleString()}원 절감
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
-                          현재 금리보다 높음
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
+            {offers.length > 0 ? (
+              offers.map((offer) => (
+                <BankOfferCard
+                  key={offer.bankName}
+                  offer={offer}
+                  currentRate={loan.current_rate}
+                  loanAmount={loan.loan_amount}
+                  loanInfo={loanInfo}
+                />
+              ))
             ) : (
               <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
                 <p className="text-4xl mb-3">🔍</p>

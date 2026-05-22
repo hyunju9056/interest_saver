@@ -5,15 +5,46 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SavingsCalculator from "./SavingsCalculator";
 import DsrLtvCard from "./DsrLtvCard";
+import BankOfferCard from "./BankOfferCard";
 import { calcMonthlyPayment, calcRemainingBalance, type LoanInfo, type RepaymentType, type HomeCount } from "@/lib/loanCalc";
+import type { BankOffer } from "@/lib/finlife";
 
-const DUMMY_OFFERS = [
-  { id: "1", bank: "KB국민은행", rate: 3.45, conditions: "아파트담보대출, LTV 60% 이하, 서울/경기, 신규 고객", start_date: "2026-05-01", end_date: "2026-05-31" },
-  { id: "2", bank: "신한은행", rate: 3.52, conditions: "주택담보대출, LTV 70% 이하, 전국, 급여이체 고객", start_date: "2026-05-10", end_date: "2026-06-10" },
-  { id: "3", bank: "카카오뱅크", rate: 3.38, conditions: "아파트담보대출, LTV 50% 이하, 전국, 비대면 신청", start_date: "2026-05-15", end_date: "2026-05-30" },
-  { id: "4", bank: "우리은행", rate: 3.61, conditions: "주택담보대출, LTV 70% 이하, 수도권, 신규 고객", start_date: "2026-05-01", end_date: "2026-05-25" },
-  { id: "5", bank: "토스뱅크", rate: 3.29, conditions: "아파트담보대출, LTV 40% 이하, 전국, 비대면 전용", start_date: "2026-05-20", end_date: "2026-06-05" },
-];
+function getEndDateInfo(endDate: string | null): { label: string; daysLeft: number; isSpecial: boolean } | null {
+  if (!endDate) return null;
+  const end = new Date(`${endDate.slice(0, 4)}-${endDate.slice(4, 6)}-${endDate.slice(6, 8)}`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysLeft = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysLeft < 0) return null;
+  const label = `${endDate.slice(4, 6)}/${endDate.slice(6, 8)}까지`;
+  return { label, daysLeft, isSpecial: daysLeft <= 90 };
+}
+
+const BANK_URLS: Record<string, string> = {
+  KB국민은행: "https://obank.kbstar.com/qub/site/mul/template/depositLoan.jsp",
+  신한은행: "https://www.shinhan.com/hpe/index.jsp#home/loan/mortgageLoan/mortgageLoanIntro.do",
+  우리은행: "https://www.wooribank.com/wb/wob/loan/comDpLo0003.do?menuCode=0094",
+  하나은행: "https://www.kebhana.com/cont/mall/mall08/mall0801/index.jsp",
+  NH농협은행: "https://banking.nonghyup.com/nhbank.html",
+  IBK기업은행: "https://www.ibk.co.kr/mortgage",
+  "SC제일은행": "https://www.sc.co.kr/html/ko/mortgage/mortgage_0201000000.html",
+  카카오뱅크: "https://www.kakaobank.com/products/mortgage-loan",
+  토스뱅크: "https://www.tossbank.com/product/loan",
+  K뱅크: "https://www.kbanknow.com/ib20/mnu/FPMLON010000000",
+  부산은행: "https://www.busanbank.co.kr/ib20/mnu/FPMLON010000",
+  경남은행: "https://www.knbank.co.kr/ib20/mnu/FPMLON010000",
+  "대구은행(iM뱅크)": "https://www.imbank.co.kr/ib20/mnu/FPMLON010000",
+  광주은행: "https://www.kjbank.com/ib20/mnu/FPMLON010000",
+  전북은행: "https://www.jbbank.co.kr/ib20/mnu/FPMLON010000",
+  제주은행: "https://www.jejubank.co.kr/ib20/mnu/FPMLON010000",
+  수협은행: "https://www.suhyup-bank.com/ib20/mnu/FPMLON010000",
+  SBI저축은행: "https://www.sbibank.co.kr/loan/mortgage.do",
+  OK저축은행: "https://www.oksavingsbank.com/loan/mortgage.do",
+  웰컴저축은행: "https://www.welcomebank.co.kr/loan/mortgage.do",
+  페퍼저축은행: "https://www.pepperbank.co.kr/loan/mortgage.do",
+  애큐온저축은행: "https://www.aquon.co.kr/loan/mortgage.do",
+  다올저축은행: "https://www.daolsb.com/loan/mortgage.do",
+};
 
 const BANK_COLORS: Record<string, string> = {
   KB국민은행: "bg-amber-50 text-amber-700 border-amber-200",
@@ -61,6 +92,8 @@ interface LoanData {
 export default function GuestDashboard() {
   const router = useRouter();
   const [loan, setLoan] = useState<LoanData | null>(null);
+  const [offers, setOffers] = useState<BankOffer[]>([]);
+  const [disclosedAt, setDisclosedAt] = useState("");
 
   useEffect(() => {
     const stored = localStorage.getItem("guest_loan");
@@ -69,6 +102,13 @@ export default function GuestDashboard() {
       return;
     }
     setLoan(JSON.parse(stored));
+    const parsed = JSON.parse(stored);
+    const pt = encodeURIComponent(parsed.property_type ?? "");
+    const rt = encodeURIComponent(parsed.repayment_type ?? "");
+    fetch(`/api/finlife?property_type=${pt}&repayment_type=${rt}`).then(r => r.json()).then(d => {
+      setOffers(d.banks ?? []);
+      if (d.disclosedAt) setDisclosedAt(d.disclosedAt);
+    });
   }, [router]);
 
   if (!loan) return null;
@@ -166,49 +206,31 @@ export default function GuestDashboard() {
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                <span>🏦</span> 현재 특판 목록
+                <span>🏦</span> 은행별 주담대 금리
               </h2>
               <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">
-                {DUMMY_OFFERS.length}개 진행 중
+                {offers.length > 0
+                  ? `금감원 · ${loan.property_type} · ${loan.repayment_type ?? ""} · ${offers.length}개 은행${disclosedAt ? ` · 공시일 ${disclosedAt}` : ""}`
+                  : "불러오는 중..."}
               </span>
             </div>
 
-            {DUMMY_OFFERS.map((offer) => {
-              const rateDiff = loan.current_rate - offer.rate;
-              const isGood = rateDiff > 0;
-              const monthlySaving = isGood
-                ? Math.round((loan.loan_amount * (rateDiff / 100)) / 12)
-                : 0;
-              const colorClass = BANK_COLORS[offer.bank] ?? "bg-slate-50 text-slate-700 border-slate-200";
+            {offers.length === 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
+                <p className="text-3xl mb-3">⏳</p>
+                <p className="text-slate-400 text-sm">금리 정보를 불러오는 중이에요</p>
+              </div>
+            )}
 
-              return (
-                <div key={offer.id} className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-blue-200 hover:shadow-md transition-all">
-                  <div className="flex items-start justify-between mb-3">
-                    <span className={`text-sm font-bold px-3 py-1 rounded-full border ${colorClass}`}>
-                      {offer.bank}
-                    </span>
-                    <div className="text-right">
-                      <div className="text-2xl font-black text-slate-900">{offer.rate}%</div>
-                      {isGood && (
-                        <div className="text-xs text-green-600 font-semibold">-{rateDiff.toFixed(2)}%p</div>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-xs text-slate-500 mb-3 leading-relaxed">{offer.conditions}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400">{offer.start_date} ~ {offer.end_date}</span>
-                    {isGood ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs bg-green-50 text-green-700 font-bold px-2 py-1 rounded-lg border border-green-200">✓ 내게 유리</span>
-                        <span className="text-sm font-black text-green-600">월 {monthlySaving.toLocaleString()}원 절감</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">현재 금리보다 높음</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {offers.map((offer) => (
+              <BankOfferCard
+                key={offer.bankName}
+                offer={offer}
+                currentRate={loan.current_rate}
+                loanAmount={loan.loan_amount}
+                loanInfo={loanInfo}
+              />
+            ))}
 
             {/* 알림 유도 배너 */}
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 flex items-center justify-between">
